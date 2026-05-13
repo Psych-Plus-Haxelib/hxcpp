@@ -143,7 +143,11 @@ class Log
          }
          else
          {
-            colorSupported = (Sys.getEnv("TERM") == "xterm" || Sys.getEnv("ANSICON") != null);
+            colorSupported = (Sys.getEnv("TERM") == "xterm"
+               || Sys.getEnv("ANSICON") != null
+               || Sys.getEnv("WT_SESSION") != null
+               || Sys.getEnv("ConEmuANSI") == "ON"
+               || Sys.getEnv("TERM_PROGRAM") != null);
          }
       }
 

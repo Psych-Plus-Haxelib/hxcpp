@@ -93,6 +93,8 @@ class BuildTool
    public static var exitOnThreadError = false;
    public static var threadExitCode = 0;
    public static var startDir:String;
+   public static var compileStagePrinted:Bool = false;
+   public static var linkStagePrinted:Bool = false;
 
 
 
@@ -565,6 +567,11 @@ class BuildTool
                   first = false;
                   Log.lock();
                   Log.println("");
+                  if (!compileStagePrinted)
+                  {
+                     Log.info("\x1b[36;1m[Stage] Compiling C++ sources\x1b[0m");
+                     compileStagePrinted = true;
+                  }
                   Log.info("\x1b[33;1mCompiling group: " + group.mId + " (" + to_be_compiled.length + " file" + (to_be_compiled.length==1 ? "" : "s") + ")\x1b[0m");
                   var message = "\x1b[1m" + (nvcc ? getNvcc() : mCompiler.mExe) + "\x1b[0m";
                   var flags = group.mCompilerFlags;
@@ -602,6 +609,8 @@ class BuildTool
 
          Profile.push("compile");
 
+         var compileStart = haxe.Timer.stamp();
+
          var compile_progress = null;
          if (!Log.verbose)
             compile_progress = new Progress(0,to_be_compiled.length);
@@ -630,6 +639,15 @@ class BuildTool
             });
          }
          Profile.pop();
+
+         if (!Log.verbose && compile_progress != null)
+            Log.println("");
+
+         if (!Log.verbose)
+         {
+            var compileElapsed = haxe.Timer.stamp() - compileStart;
+            Log.info('Compiled group ' + group.mId + ': ' + to_be_compiled.length + ' files in ' + (Std.int(compileElapsed * 10) / 10) + 's');
+         }
 
          if (CompileCache.hasCache && group.mAsLibrary && mLinkers.exists("static_link"))
          {
@@ -672,6 +690,11 @@ class BuildTool
       switch(target.mTool)
       {
          case "linker":
+            if (!linkStagePrinted && !Log.verbose)
+            {
+               Log.info("\x1b[36;1m[Stage] Linking and packaging\x1b[0m");
+               linkStagePrinted = true;
+            }
             Profile.push("linker");
             if (mPrelinkers.exists(target.mToolID))
             {

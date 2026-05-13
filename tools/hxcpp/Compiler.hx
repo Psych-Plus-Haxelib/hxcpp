@@ -35,6 +35,9 @@ private class FlagInfo
 
 class Compiler
 {
+   private static var liveOutputInitialized:Bool = false;
+   private static var lastLinearStatusLength:Int = 0;
+
    private var mFlags:Array<FlagInfo>;
    public var mCFlags:Array<String>;
    public var mNvccFlags:Array<String>;
@@ -386,27 +389,42 @@ class Compiler
 
             var fileName = inFile.mName;
             var split = fileName.split ("/");
+            
+            // Store file in progress tracker
+            if (inProgess != null)
+            {
+               inProgess.setFile(split[split.length - 1]);
+            }
+
+            // Format file path
             if (split.length > 1)
             {
-               fileName = " \x1b[2m-\x1b[0m \x1b[33m" + split.slice(0, split.length - 1).join("/") + "/\x1b[33;1m" + split[split.length - 1] + "\x1b[0m";
+               fileName = split.slice(0, split.length - 1).join("/") + "/" + split[split.length - 1];
             }
-            else
+
+            if (fileName.length > 100)
             {
-               fileName = " \x1b[2m-\x1b[0m \x1b[33;1m" + fileName + "\x1b[0m";
+               fileName = "..." + fileName.substr(fileName.length - 97);
             }
-            fileName += " \x1b[3m" + tagInfo + "\x1b[0m";
 
             printMutex.acquire();
 
             if (inProgess != null)
             {
                inProgess.progress(1);
-               fileName = inProgess.getProgress() + fileName;
+               var progressBar = inProgess.getFormattedProgress();
+               printLiveCompileStatus(progressBar, fileName);
+               fileName = "";
+            }
+            else
+            {
+               fileName = " \x1b[2m-\x1b[0m \x1b[33;1m" + fileName + "\x1b[0m";
             }
 
             if((inTid >= 0 && BuildTool.threadExitCode == 0) || inTid < 0)
             {
-               Log.info(fileName);
+               if (fileName != "")
+                  Log.info(fileName);
             }
             printMutex.release();
          }
@@ -477,6 +495,36 @@ class Compiler
       }
 
       return mCached;
+   }
+
+   private static function printLiveCompileStatus(progressLine:String, fileLine:String):Void
+   {
+      if (Log.colorSupported == null)
+         Log.print("");
+
+      var supportsAnsi = (Log.colorSupported == true);
+
+      if (supportsAnsi)
+      {
+         if (!liveOutputInitialized)
+         {
+            Log.print("\n\n");
+            liveOutputInitialized = true;
+         }
+
+         Log.print("\x1b[2A\r\x1b[2K" + progressLine + "\n\x1b[2K" + fileLine + "\n");
+      }
+      else
+      {
+         var status = progressLine + " " + fileLine;
+         var padCount = lastLinearStatusLength - status.length;
+         if (padCount < 0) padCount = 0;
+         var pad = "";
+         for (i in 0...padCount)
+            pad += " ";
+         Log.print("\r" + status + pad);
+         lastLinearStatusLength = status.length;
+      }
    }
 
    function getObjName(inFile:File)
