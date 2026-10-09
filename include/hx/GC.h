@@ -18,6 +18,8 @@
 
 // Tell compiler the extra functions are supported
 #define HXCPP_GC_FUNCTIONS_1
+// Allows applications to feature-detect the optional runtime timing counters.
+#define HXCPP_GC_RUNTIME_STATS 1
 
 // Function called by the haxe code...
 
@@ -34,6 +36,10 @@ HXCPP_EXTERN_CLASS_ATTRIBUTES void   __hxcpp_gc_compact();
 HXCPP_EXTERN_CLASS_ATTRIBUTES int   __hxcpp_gc_trace(hx::Class inClass, bool inPrint);
 HXCPP_EXTERN_CLASS_ATTRIBUTES int   __hxcpp_gc_used_bytes();
 HXCPP_EXTERN_CLASS_ATTRIBUTES double __hxcpp_gc_mem_info(int inWhat);
+// Runtime GC statistics. Selectors: 0=count, 1=total ms, 2=last ms,
+// 3=max ms, 4=last thread wait ms, 5=max thread wait ms,
+// 6=last reclaimed bytes, 7=total reclaimed bytes, 8=last collection flags.
+HXCPP_EXTERN_CLASS_ATTRIBUTES double __hxcpp_gc_stat(int inWhat);
 HXCPP_EXTERN_CLASS_ATTRIBUTES void  __hxcpp_enter_gc_free_zone();
 HXCPP_EXTERN_CLASS_ATTRIBUTES void  __hxcpp_exit_gc_free_zone();
 HXCPP_EXTERN_CLASS_ATTRIBUTES void  __hxcpp_gc_safe_point();
@@ -327,7 +333,7 @@ namespace hx
 
 
 
-class StackContext;
+struct StackContext;
 
 EXTERN_FAST_TLS_DATA(StackContext, tlsStackContext);
 

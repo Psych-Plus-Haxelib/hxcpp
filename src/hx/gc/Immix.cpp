@@ -388,6 +388,20 @@ extern void __hxt_gc_after_mark(int gByteMarkID, int markIdByte);
 
 static int sgTimeToNextTableUpdate = 1;
 
+// Lightweight, always-on timings used by applications to diagnose GC stalls.
+// Collection is serialized, and the snapshot is published while managed
+// threads are still paused so readers never observe a half-written sample.
+static int sgGcCollectionCount = 0;
+static double sgGcTotalCollectMs = 0.0;
+static double sgGcLastCollectMs = 0.0;
+static double sgGcMaxCollectMs = 0.0;
+static double sgGcLastThreadWaitMs = 0.0;
+static double sgGcMaxThreadWaitMs = 0.0;
+static double sgGcLastReclaimedBytes = 0.0;
+static double sgGcTotalReclaimedBytes = 0.0;
+// 1=requested major, 2=full sweep, 4=generational, 8=forced compact.
+static int sgGcLastFlags = 0;
+
 
 
 
@@ -4832,6 +4846,9 @@ public:
       }
       #endif
 
+      double gcCollectStart = __hxcpp_time_stamp();
+      double gcThreadWait = 0.0;
+
       STAMP(t0)
 
       // We are the collector - all must wait for us
@@ -4839,15 +4856,23 @@ public:
       #ifndef HXCPP_SINGLE_THREADED_APP
       this_local = (LocalAllocator *)(hx::ImmixAllocator *)hx::tlsStackContext;
 
+      double gcThreadWaitStart = __hxcpp_time_stamp();
+
       if (!inLocked)
          gThreadStateChangeLock->Lock();
 
       for(int i=0;i<mLocalAllocs.size();i++)
          if (mLocalAllocs[i]!=this_local)
             WaitForSafe(mLocalAllocs[i]);
+
+      gcThreadWait = (__hxcpp_time_stamp() - gcThreadWaitStart) * 1000.0;
       #endif
 
       sgIsCollecting = true;
+
+      // All managed threads are stopped here, so this is a stable pre-GC heap
+      // snapshot. MemCurrent includes growth since the previous collection.
+      size_t gcHeapBefore = MemCurrent();
 
       StopThreadJobs(true);
       #ifdef HXCPP_DEBUG
@@ -5283,6 +5308,14 @@ public:
       mAllBlocksCount   = mAllBlocks.size();
       mCurrentRowsInUse = mRowsInUse;
 
+      size_t gcHeapAfter = MemCurrent();
+      double gcReclaimedBytes = gcHeapBefore > gcHeapAfter ?
+                                  (double)(gcHeapBefore - gcHeapAfter) : 0.0;
+      int gcFlags = (inMajor ? 1 : 0) |
+                    (full ? 2 : 0) |
+                    (generational ? 4 : 0) |
+                    (inForceCompact ? 8 : 0);
+
       #ifdef SHOW_MEM_EVENTS
       GCLOG("Collect Done\n");
       #endif
@@ -5342,6 +5375,20 @@ public:
       #ifdef HXCPP_TELEMETRY
       __hxt_gc_end();
       #endif
+
+      // Publish every field before the count. Managed readers resume only
+      // after this block, making the count the commit marker for the sample.
+      sgGcLastThreadWaitMs = gcThreadWait;
+      if (gcThreadWait > sgGcMaxThreadWaitMs)
+         sgGcMaxThreadWaitMs = gcThreadWait;
+      sgGcLastReclaimedBytes = gcReclaimedBytes;
+      sgGcTotalReclaimedBytes += gcReclaimedBytes;
+      sgGcLastFlags = gcFlags;
+      sgGcLastCollectMs = (__hxcpp_time_stamp() - gcCollectStart) * 1000.0;
+      sgGcTotalCollectMs += sgGcLastCollectMs;
+      if (sgGcLastCollectMs > sgGcMaxCollectMs)
+         sgGcMaxCollectMs = sgGcLastCollectMs;
+      sgGcCollectionCount++;
 
       sgIsCollecting = false;
 
@@ -6907,6 +6954,23 @@ double __hxcpp_gc_mem_info(int inWhich)
          return (double)sGlobalAlloc->MemLarge();
    }
    return 0;
+}
+
+double __hxcpp_gc_stat(int inWhich)
+{
+   switch(inWhich)
+   {
+      case 0: return (double)sgGcCollectionCount;
+      case 1: return sgGcTotalCollectMs;
+      case 2: return sgGcLastCollectMs;
+      case 3: return sgGcMaxCollectMs;
+      case 4: return sgGcLastThreadWaitMs;
+      case 5: return sgGcMaxThreadWaitMs;
+      case 6: return sgGcLastReclaimedBytes;
+      case 7: return sgGcTotalReclaimedBytes;
+      case 8: return (double)sgGcLastFlags;
+   }
+   return 0.0;
 }
 
 int   __hxcpp_gc_used_bytes()
