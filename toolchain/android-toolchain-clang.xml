@@ -98,7 +98,8 @@
 
   <flag value ="-static-libstdc++" />
   <flag value ="-Wl,--allow-multiple-definition"/>
-  <flag value ="-Wl,-z,max-page-size=4096"/>
+  <!-- Android 15+ and current Play requirements use 16 KB memory pages. -->
+  <flag value ="-Wl,-z,max-page-size=16384"/>
   <!-- This shows the android link line, which may be so long that it breaks the tool
      https://github.com/HaxeFoundation/hxcpp/pull/1091
      <flag value ="-v" />
